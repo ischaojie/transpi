@@ -12,3 +12,11 @@ def test_trans():
     assert bing["pronounce"]
     assert bing["trans"]
     assert bing["examples"]
+
+
+def test_no_exists_trans():
+    empty = trans("wrod")
+    assert not empty["origin"]
+    assert not empty["pronounce"]
+    assert not empty["trans"]
+    assert not empty["examples"]

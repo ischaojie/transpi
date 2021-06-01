@@ -12,7 +12,7 @@ class Trans:
     @property
     def egg(self):
         return {
-            "origin": self.word,
+            "origin": self.word if self.pronounce else "",
             "pronounce": self.pronounce,
             "trans": self.trans,
             "examples": self.examples,
