@@ -15,3 +15,12 @@ print(result)
 result2 = transpi.trans("human", engine="bing")
 print(result2)
 ```
+
+### versions
+- v0.2.0
+  
+  support bing trans
+  
+- v0.1.0
+  
+  support youdao trans

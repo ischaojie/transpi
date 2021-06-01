@@ -18,11 +18,12 @@ URL = 'https://github.com/ischaojie/transpi'
 EMAIL = 'zhuzhezhe95@gmail.com'
 AUTHOR = 'chaojie'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    # 'requests', 'maya', 'records',
+    'requests-html',
+    # 'maya', 'records',
 ]
 
 # What packages are optional?
