@@ -1,114 +1,109 @@
+from typing import Dict
 from requests_html import HTMLSession
+from functools import singledispatch
+from .exception import NotEnglishWordException
 
 
-class Trans:
-    def __init__(self, word):
+def lazyproperty(func):
+    name = "_lazy_" + func.__name__
+
+    @property
+    def lazy(self):
+        if hasattr(self, name):
+            return getattr(self, name)
+        else:
+            value = func(self)
+            setattr(self, name, value)
+            return value
+
+    return lazy
+
+
+class TransMeta(type):
+    def __new__(cls, clsname, bases, attrs):
+        if not clsname.endswith("Trans"):
+            raise TypeError(f"Class name should end with Trans")
+        if clsname != "Trans" and "translate" not in attrs:
+            raise NotImplementedError(f"Class {clsname} should impl translate() method")
+        return super().__new__(cls, clsname, bases, attrs)
+
+
+class Trans(metaclass=TransMeta):
+    def __init__(self, word, url):
         self.word = word
-        self._url = ""
-        self.pronounce = []
-        self.trans = []
-        self.examples = []
+        self._url = url
+        self._session = HTMLSession()
+
+    @lazyproperty
+    def r(self):
+        return self._session.get(self._url)
 
     @property
-    def egg(self):
-        return {
-            "origin": self.word if self.pronounce else "",
-            "pronounce": self.pronounce,
-            "trans": self.trans,
-            "examples": self.examples,
-        }
+    def pronounce(self):
+        return self.translate()[0]
 
+    @property
     def translation(self):
-        pass
+        return self.translate()[1]
 
     @property
-    def session(self):
-        return HTMLSession()
+    def sentences(self):
+        return self.translate()[2]
 
 
 class YoudaoTrans(Trans):
     def __init__(self, word):
-        super(YoudaoTrans, self).__init__(word)
-        self._url = f"http://dict.youdao.com/w/eng/{word}/"
-        self.r = self.session.get(self._url)
+        _url = f"https://dict.youdao.com/w/eng/{word}/"
+        super(YoudaoTrans, self).__init__(word, _url)
 
-    def translation(self):
-        self.pronounce = [
+    def get_voice(self, region):
+        if region.startswith("美"):
+            tp = 1
+        elif region.startswith("英"):
+            tp = 2
+        return f"https://dict.youdao.com/dictvoice?audio={self.word}&type={tp}"
+
+    def translate(self):
+        # pronounce
+        pronounce = [
             "".join(p.xpath("//span//text()")).replace("\n", "").replace(" ", "")
             for p in self.r.html.xpath("//span[@class='pronounce']")
         ]
-
-        trans = self.r.html.xpath("(//div[@class='trans-container'])[1]/ul/li/text()")
-        self.trans = [
-            {"cixing": t.split(".")[0], "tran": t.split(".")[1]} for t in trans
+        pronounce = [{"symbol": p, "voice": self.get_voice(p)} for p in pronounce]
+        # translation
+        temp_trans = self.r.html.xpath(
+            "(//div[@class='trans-container'])[1]/ul/li/text()"
+        )
+        translation = [
+            {"cixing": t.split(".")[0], "tran": t.split(".")[1]}
+            for t in temp_trans
+            if len(t.split(".")) > 1
         ]
 
-        temp_examples = self.r.html.xpath("//div[@id='bilingual']/ul/li")
-        self.examples = [
+        # examples
+        temp_sentences = self.r.html.xpath("//div[@id='bilingual']/ul/li")
+        sentences = [
             {
                 "en": "".join(example.xpath("(//p)[1]//text()")).strip("\n"),
                 "cn": "".join(example.xpath("(//p)[2]//text()")).strip("\n"),
             }
-            for example in temp_examples
+            for example in temp_sentences
         ]
-
-        return self.egg
-
-
-class BaiduTrans(Trans):
-    pass
+        return pronounce, translation, sentences
 
 
-class BingTrans(Trans):
-    def __init__(self, word):
-        super(BingTrans, self).__init__(word)
-        self._url = "https://cn.bing.com/dict/search"
-        cookies = self.session.get(self._url).cookies
-        self.r = self.session.get(self._url, params={"q": word}, cookies=cookies)
+def trans(word: str, engine: str = "youdao") -> Dict:
+    """trans word, default engine is youdao"""
 
-    def translation(self):
-        # pronounce
-        self.pronounce = [
-            i.strip(" ")
-            for i in self.r.html.xpath("(//div[@class='hd_p1_1']//div)//text()")
-        ]
+    if len(word.split(" ")) > 1:
+        raise NotEnglishWordException("Invalid word")
 
-        # trans
-        self.trans = [
-            {
-                "cixing": t.xpath("(//span)[1]//text()")[0],
-                "tran": t.xpath("(//span)[2]//text()")[0],
-            }
-            for t in self.r.html.xpath("//div[@class='qdef']/ul//li")
-        ]
+    engine = globals().get(f"{engine.title()}Trans", None)
+    trans_result = engine(word) if engine else {}
 
-        # example sentence
-        self.examples = [
-            {
-                "en": "".join(e.xpath("//div[@class='sen_en b_regtxt']//text()")),
-                "cn": "".join(e.xpath("//div[@class='sen_cn b_regtxt']//text()")),
-            }
-            for e in self.r.html.xpath("//div[@id='sentenceSeg']//div[@class='se_li1']")
-        ]
-
-        return self.egg
-
-
-def trans(word, engine: str = "youdao"):
-    """trans word
-    default engine is youdao
-    """
-    egg = []
-
-    if engine == "youdao":
-        egg = YoudaoTrans(word).translation()
-    elif engine == "bing":
-        egg = BingTrans(word).translation()
-
-    return egg
-
-
-if __name__ == "__main__":
-
-    result = trans("human", engine="youdao")
-    print(result)
+    return {
+        "name": word,
+        "pronounce": trans_result.pronounce or [],
+        "translation": trans_result.translation or [],
+        "sentences": trans_result.sentences or {},
+    }
